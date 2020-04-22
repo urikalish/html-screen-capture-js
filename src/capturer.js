@@ -5,7 +5,7 @@ import OutputTypeEnum from './output-type-enum';
 export default class Capturer {
 	constructor() {
 		this._logger = new Logger();
-		this._isHead = true;
+		this._isBody = false;
 		this._classMap = {};
 		this._classCount = 0;
 		this._shouldHandleImgDataUrl = true;
@@ -23,16 +23,13 @@ export default class Capturer {
 			prefixForNewGeneratedClasses: 'c',
 			imageFormatForDataUrl: 'image/png',
 			imageQualityForDataUrl: 0.92,
-			rulesToAddToDocStyle: []
+			rulesToAddToDocStyle: [],
+			logLevel: 'warn'
 		};
 	}
-	_overrideOptions(options) {
+	_handleOptions(options) {
 		if (options) {
-			for (let def in options) {
-				if (options.hasOwnProperty(def)) {
-					this._options[def] = options[def];
-				}
-			}
+			this._options = {...this._options, ...options};
 		}
 	}
 	_getCanvasDataUrl(canvasElm) {
@@ -100,7 +97,7 @@ export default class Capturer {
 			let className = this._classMap[mapKey];
 			if (!className) {
 				this._classCount++;
-				className = (this._options.prefixForNewGeneratedClasses ? this._options.prefixForNewGeneratedClasses : 'c') + this._classCount;
+				className = (this._options.prefixForNewGeneratedClasses || 'c') + this._classCount;
 				this._classMap[mapKey] = className;
 			}
 			classStr += (className + ' ');
@@ -109,12 +106,14 @@ export default class Capturer {
 			newElm.setAttribute('class', classStr.trim());
 		}
 	}
-	static _handleElmValue(domElm, newElm) {
-		if (domElm.tagName.toLowerCase() === 'input' && domElm.getAttribute('type') === 'text') {
+	static _handleInputs(domElm, newElm) {
+		if (domElm.tagName === 'INPUT' && domElm.getAttribute('type') === 'text' && domElm.value) {
 			newElm.setAttribute('value', domElm.value);
-		} else if(domElm.tagName.toLowerCase() === 'textarea') {
+		} else if(domElm.tagName === 'TEXTAREA' && domElm.value) {
 			newElm.innerText = domElm.value;
-		} else if (domElm.tagName.toLowerCase() === 'select' && domElm.children) {
+		} else if(domElm.tagName === 'INPUT' && domElm.getAttribute('type') === 'checkbox' && domElm.checked) {
+			newElm.setAttribute('checked', 'checked');
+		} else if (domElm.tagName === 'SELECT' && domElm.value && domElm.children) {
 			newElm.setAttribute('value', domElm.value);
 			for (let i = domElm.children.length - 1; i >= 0; i--) {
 				if (domElm.children[i].getAttribute('value') === domElm.value) {
@@ -123,42 +122,44 @@ export default class Capturer {
 					newElm.children[i].removeAttribute('selected');
 				}
 			}
+		} else if(domElm.value) {
+			newElm.setAttribute('value', domElm.value);
 		}
 	}
 	_appendNewStyle(newHtml) {
 		const style = this._doc.createElement('style');
-		style.type = 'text/css';
 		let cssText = this._options.rulesToAddToDocStyle ? this._options.rulesToAddToDocStyle.join('') : '';
 		for (let def in this._classMap) {
 			if (this._classMap.hasOwnProperty(def)) {
 				cssText += ('.' + this._classMap[def] + '{' + def + '}');
 			}
 		}
-		if (style.styleSheet) {
-			style.styleSheet.cssText = cssText;
-		} else {
-			style.appendChild(this._doc.createTextNode(cssText));
-		}
+		style.appendChild(this._doc.createTextNode(cssText));
 		newHtml.children[0].appendChild(style);
 	}
 	_shouldIgnoreElm(domElm) {
 		let shouldRemoveElm = false;
-		if (this._isHead && this._options.tagsOfIgnoredDocHeadElements && this._options.tagsOfIgnoredDocHeadElements.indexOf(domElm.tagName.toLowerCase()) > -1 ||
-		!this._isHead && this._options.tagsOfIgnoredDocBodyElements && this._options.tagsOfIgnoredDocBodyElements.indexOf(domElm.tagName.toLowerCase()) > -1) {
-			shouldRemoveElm = true;
+		if (!this._isBody
+			&& this._options.tagsOfIgnoredDocHeadElements
+			&& !this._options.tagsOfIgnoredDocHeadElements.includes(domElm.tagName.toLowerCase())
+			||
+			this._isBody && this._options.tagsOfIgnoredDocBodyElements
+			&& !this._options.tagsOfIgnoredDocBodyElements.includes(domElm.tagName.toLowerCase())) {
+				shouldRemoveElm = true;
 		}
 		if (!shouldRemoveElm && this._options.attrKeyValuePairsOfIgnoredElements) {
 			for (let attrKey in this._options.attrKeyValuePairsOfIgnoredElements) {
 				if (this._options.attrKeyValuePairsOfIgnoredElements.hasOwnProperty(attrKey)) {
 					for (let i = 0; i < domElm.attributes.length; i++) {
-						if (domElm.attributes[i].specified && domElm.attributes[i].value === this._options.attrKeyValuePairsOfIgnoredElements[attrKey]) {
-							shouldRemoveElm = true;
+						if (domElm.attributes[i].specified
+							&& domElm.attributes[i].value === this._options.attrKeyValuePairsOfIgnoredElements[attrKey]) {
+								shouldRemoveElm = true;
 						}
 					}
 				}
 			}
 		}
-		if (!shouldRemoveElm && !this._isHead && this._options.classesOfIgnoredDocBodyElements) {
+		if (!shouldRemoveElm && this._isBody && this._options.classesOfIgnoredDocBodyElements) {
 			const domElmClasses = this._getClasses(domElm);
 			domElmClasses.forEach(c => {
 				if (!shouldRemoveElm && this._options.classesOfIgnoredDocBodyElements.indexOf(c) > -1) {
@@ -169,26 +170,27 @@ export default class Capturer {
 		return shouldRemoveElm;
 	}
 	_recursiveWalk(domElm, newElm, handleCss) {
-		if (this._shouldHandleImgDataUrl && !this._isHead && domElm.tagName.toLowerCase() === 'img') {
+		if (this._shouldHandleImgDataUrl && this._isBody && domElm.tagName === 'IMG') {
 			const imgDataUrl = this._getImgDataUrl(domElm);
 			if (imgDataUrl) {
 				newElm.setAttribute('src', imgDataUrl);
 			}
 		}		
-		if (!this._isHead && domElm.tagName.toLowerCase() === 'canvas') {
+		if (this._isBody && domElm.tagName === 'CANVAS') {
 			const canvasDataUrl = this._getCanvasDataUrl(domElm);
 			if (canvasDataUrl) {
 				newElm.setAttribute('src', canvasDataUrl);
 			}
 			newElm.outerHTML = newElm.outerHTML.replace(/<canvas/g, '<img');			
 		}
-		if (domElm.value) {
-			Capturer._handleElmValue(domElm, newElm);
+		if (this._isBody) {
+			Capturer._handleInputs(domElm, newElm);
 		}
 		if (handleCss) {
 			this._handleElmCss(domElm, newElm);
-			if (this._options.tagsOfSkippedElementsForChildTreeCssHandling && this._options.tagsOfSkippedElementsForChildTreeCssHandling.indexOf(domElm.tagName.toLowerCase()) > -1) {
-				handleCss = false;
+			if (this._options.tagsOfSkippedElementsForChildTreeCssHandling
+				&& !this._options.tagsOfSkippedElementsForChildTreeCssHandling.includes(domElm.tagName.toLowerCase())) {
+					handleCss = false;
 			}
 		}
 		if (domElm.children) {
@@ -208,13 +210,13 @@ export default class Capturer {
 	}
 	_appendNewHead(newHtml) {
 		const newHead = this._doc.head.cloneNode(true);
-		this._isHead = true;
+		this._isBody = false;
 		this._recursiveWalk(this._doc.head, newHead, false);
 		newHtml.appendChild(newHead);
 	}
 	_appendNewBody(newHtml) {
 		const newBody = this._doc.body.cloneNode(true);
-		this._isHead = false;
+		this._isBody = true;
 		this._recursiveWalk(this._doc.body, newBody, true);
 		newHtml.appendChild(newBody);
 	}
@@ -252,7 +254,7 @@ export default class Capturer {
 		let output = null;
 		const startTime = (new Date()).getTime();
 		try {
-			this._overrideOptions(options);
+			this._handleOptions(options);
 			this._doc = htmlDocument || document;
 			this._logger.setLogLevel(this._options.logLevel);
 			this._logger.info(`capture() outputType: ${outputType} - start`);

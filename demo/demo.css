@@ -15,13 +15,17 @@ section {
 }
 label {
     margin-right: 10px;
-    width: 90px;
+    width: 120px;
     font-weight: bold;
 }
 input {
     width: 200px;
     border: 1px solid #ccc;
     font-family: Helvetica, sans-serif;
+}
+input[type="checkbox"] {
+    width: auto;
+    margin: 3px 0;
 }
 textarea {
     width: 200px;
