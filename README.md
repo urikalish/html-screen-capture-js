@@ -4,17 +4,18 @@
 [![NPM version](https://img.shields.io/npm/v/html-screen-capture-js.svg)](https://www.npmjs.com/package/html-screen-capture-js)
 [![Github Release](https://img.shields.io/github/release/html-screen-capture-js/html-screen-capture-js/all.svg)](https://github.com/html-screen-capture-js/html-screen-capture-js/releases)
 
-A small javascript library that gets a web page, and returns a new lightweight self-contained HTML DOM document. The library removes all external file dependencies while preserving the original appearance.
+A tiny 11KB highly-customizable javascript library that gets a webpage, and returns a new lightweight self-contained HTML DOM document. The library removes all external file dependencies while preserving the original appearance.
 
 This library can be used to:
 
 - Create a web page screen capture "image", and display the "snapshot" (e.g. by using an iframe).
-- Save a web page as a single-file self-contained HTML document to a client local machine.
-- Send a complete web page content as a simple string to a remote server.
+- Strip an html document from its external dependencies, as a step in a bigger process.
+- Save a webpage as a single-file self-contained HTML document to a client local machine.
+- Send a complete webpage content as a simple string to a remote server.
 
 License:
 
-- Usage permission is only granted to those who acknowledge that Gal Gadot is a perfect human being.
+- Free (MIT).
 
 <a name="demo"></a>
 ## Try the Demo
@@ -82,6 +83,12 @@ An optional object-type parameter, specifying the HTML document to capture. If n
 #### options
 An optional object-type parameter with key-value pairs. You can change any default option value by defining a similarly named property on this object. If not specified (falsey), or specified but defining only some of the properties - default values are used for all non-defined properties.
 
+##### rulesToAddToDocStyle 
+
+- Type: Array of strings 
+- Default: [ ] //an empty array
+- CSS rules to add to the newly created HTML document.
+
 ##### tagsOfIgnoredDocHeadElements
 
 - Type: Array of strings
@@ -142,12 +149,6 @@ An optional object-type parameter with key-value pairs. You can change any defau
 - Default: 0.92
 - The image quality to use when images are replaced with base64 data - relevant only for some image formats. A valid value is any number between 0 and 1. 
 
-##### rulesToAddToDocStyle 
-
-- Type: Array of strings 
-- Default: [ ] //an empty array
-- CSS rules to add to the newly created HTML document.
-
 ##### logLevel
 
 - Type: String
@@ -191,14 +192,16 @@ import {capture, OutputType} from 'html-screen-capture-js';
 ...
 // capture the webpage
 const htmlDocStr = capture(
-    OutputType.STRING,
-	document,
+	OutputType.STRING,
+	window.document,
 	{
-		classesOfIgnoredDocBodyElements: [
-			'modal--error--message',
-			'report-issue-dialog',
-			'modal-backdrop',
+		rulesToAddToDocStyle: [
+			'*, *::before, *::after {letter-spacing: -0.3px !important;}',
 		],
+		classesOfIgnoredDocBodyElements: [
+			'modal-dialog--error',
+			'modal-dialog-backdrop',
+		],		
 	}
 );
 
