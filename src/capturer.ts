@@ -1,4 +1,4 @@
-import { LogLevel, OutputType, CaptureFunction } from './types';
+import { CaptureFunction, LogLevel, OutputType } from './types';
 import { logger } from './logger';
 import { base64Encode, uriEncode } from './encoder';
 
@@ -18,6 +18,7 @@ interface CaptureContext {
         tagsOfIgnoredDocBodyElements: string[];
         classesOfIgnoredDocBodyElements: string[];
         attrKeyValuePairsOfIgnoredElements: {};
+        computedStyleKeyValuePairsOfIgnoredElements: {};
         tagsOfSkippedElementsForChildTreeCssHandling: string[];
         attrKeyForSavingElementOrigClass: string;
         attrKeyForSavingElementOrigStyle: string;
@@ -165,35 +166,45 @@ const handleCanvasElement = (context: CaptureContext, domElm: HTMLCanvasElement,
 };
 
 const shouldIgnoreElm = (context: CaptureContext, domElm: Element): boolean => {
-    let shouldIgnore = false;
     if (
         (!context.isBody && context.options.tagsOfIgnoredDocHeadElements.includes(domElm.tagName.toLowerCase())) ||
         (context.isBody && context.options.tagsOfIgnoredDocBodyElements.includes(domElm.tagName.toLowerCase()))
     ) {
-        shouldIgnore = true;
+        return true;
     }
-    if (!shouldIgnore) {
+    const attrKeyValuePairsOfIgnoredElements = Object.entries(context.options.attrKeyValuePairsOfIgnoredElements);
+    if (attrKeyValuePairsOfIgnoredElements.length > 0) {
         for (let i = 0; i < domElm.attributes.length; i++) {
             if (domElm.attributes[i].specified) {
-                for (const [k, v] of Object.entries(context.options.attrKeyValuePairsOfIgnoredElements)) {
+                for (const [k, v] of attrKeyValuePairsOfIgnoredElements) {
                     if (k === domElm.attributes[i].name && v === domElm.attributes[i].value) {
-                        shouldIgnore = true;
-                        break;
+                        return true;
                     }
                 }
             }
         }
     }
-    if (!shouldIgnore && context.isBody) {
+    const classesOfIgnoredDocBodyElements = context.options.classesOfIgnoredDocBodyElements;
+    if (context.isBody && classesOfIgnoredDocBodyElements.length > 0) {
         const domElmClasses = getClasses(domElm);
         for (const c of domElmClasses) {
-            if (context.options.classesOfIgnoredDocBodyElements.includes(c)) {
-                shouldIgnore = true;
-                break;
+            if (classesOfIgnoredDocBodyElements.includes(c)) {
+                return true;
             }
         }
     }
-    return shouldIgnore;
+    const computedStyleKeyValuePairsOfIgnoredElements = Object.entries(
+        context.options.computedStyleKeyValuePairsOfIgnoredElements,
+    );
+    if (context.isBody && computedStyleKeyValuePairsOfIgnoredElements.length > 0) {
+        const computedStyle = getComputedStyle(domElm);
+        for (const [k, v] of computedStyleKeyValuePairsOfIgnoredElements) {
+            if (computedStyle.getPropertyValue(k) === v) {
+                return true;
+            }
+        }
+    }
+    return false;
 };
 
 const recursiveWalk = (context: CaptureContext, domElm: Element, newElm: Element, handleCss: boolean): void => {
@@ -284,7 +295,7 @@ const getHtmlObject = (context: CaptureContext): HTMLElement => {
     return newHtml;
 };
 
-const prepareOutput = (newHtmlObject: HTMLElement, outputType = OutputType.OBJECT): string | HTMLElement => {
+const prepareOutput = (newHtmlObject: HTMLElement, outputType: OutputType): string | HTMLElement => {
     let output = null;
     if (outputType === OutputType.OBJECT) {
         output = newHtmlObject;
@@ -307,7 +318,7 @@ const prepareOutput = (newHtmlObject: HTMLElement, outputType = OutputType.OBJEC
     return output;
 };
 
-export const goCapture: CaptureFunction = (outputType, htmlDocument, options) => {
+export const goCapture: CaptureFunction = (outputType?, htmlDocument?, options?) => {
     const startTime = new Date().getTime();
     let output = null;
     const context: CaptureContext = {
@@ -327,6 +338,7 @@ export const goCapture: CaptureFunction = (outputType, htmlDocument, options) =>
                 tagsOfIgnoredDocBodyElements: ['script'],
                 classesOfIgnoredDocBodyElements: [],
                 attrKeyValuePairsOfIgnoredElements: {},
+                computedStyleKeyValuePairsOfIgnoredElements: { display: 'none' },
                 tagsOfSkippedElementsForChildTreeCssHandling: ['svg'],
                 attrKeyForSavingElementOrigClass: '_class',
                 attrKeyForSavingElementOrigStyle: '_style',
@@ -336,14 +348,13 @@ export const goCapture: CaptureFunction = (outputType, htmlDocument, options) =>
                 imageQualityForDataUrl: 0.92,
                 logLevel: LogLevel.WARN,
             },
-            ...options,
+            ...(options || {}),
         },
     };
     try {
         logger.setLogLevel(context.options.logLevel);
-        logger.info(`goCapture() outputType: ${outputType} - start`);
         const newHtmlObject = getHtmlObject(context);
-        output = prepareOutput(newHtmlObject, outputType);
+        output = prepareOutput(newHtmlObject, outputType || OutputType.OBJECT);
     } catch (ex) {
         logger.error(`goCapture() - error - ${ex.message}`);
     } finally {
